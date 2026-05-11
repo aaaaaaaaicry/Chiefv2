@@ -120,6 +120,7 @@ end
 
 local function FlickTriggerShoot()
     if not FlickTrigger.Enabled then return end
+    if type(VirtualInputManager) ~= "table" or type(VirtualInputManager.SendMouseButtonEvent) ~= "function" then return end
     local target = GetClosestTargetToCenter()
     if not target then return end
     
@@ -142,6 +143,7 @@ end
 
 local function CreateFlickFOVCircle()
     if FlickTrigger.FOVCircle then FlickTrigger.FOVCircle:Remove() end
+    if type(Drawing) ~= "table" or type(Drawing.new) ~= "function" then return end
     FlickTrigger.FOVCircle = Drawing.new("Circle")
     FlickTrigger.FOVCircle.Radius = FlickTrigger.FOV
     FlickTrigger.FOVCircle.Thickness = 2
@@ -198,6 +200,7 @@ local function ExecuteBackstab(targetPlayer)
     if Backstab.TeleportDelay and Backstab.TeleportDelay > 0 then
         task.wait(Backstab.TeleportDelay / 1000)
     end
+    if type(backPos) ~= "userdata" then return false end
     rootPart.CFrame = CFrame.new(backPos)
     if Backstab.AutoRotate then
         local directionToTarget = (targetChar.HumanoidRootPart.Position - backPos).Unit
@@ -210,6 +213,7 @@ end
 
 local function CreateBackstabFOVCircle()
     if Backstab.FOVCircle then Backstab.FOVCircle:Remove() end
+    if type(Drawing) ~= "table" or type(Drawing.new) ~= "function" then return end
     Backstab.FOVCircle = Drawing.new("Circle")
     Backstab.FOVCircle.Radius = Backstab.FOV
     Backstab.FOVCircle.Thickness = 2
@@ -2984,7 +2988,7 @@ rageSection:Toggle({
 
 backstabSection:Toggle({Name = "Enable Backstab", Default = false, Flag = "BackstabEnabled", Callback = function(v) Backstab.Enabled = v; if Backstab.FOVCircle then Backstab.FOVCircle.Visible = v and Backstab.ShowFOVCircle else CreateBackstabFOVCircle() end; if not v then Backstab.ToggleState = false; Backstab.Holding = false end end})
 
-backstabSection:Dropdown({Name = "Backstab Mode", Flag = "BackstabMode", Items = {"Hold", "Toggle"}, Default = "Hold", Callback = function(v) Backstab.Mode = v:lower(); Backstab.ToggleState = false end})
+backstabSection:Dropdown({Name = "Backstab Mode", Flag = "BackstabMode", Items = {"Hold", "Toggle"}, Default = "Hold", Callback = function(v) Backstab.Mode = (type(v) == "string" and v:lower()) or "hold"; Backstab.ToggleState = false end})
 
 backstabSection:Dropdown({Name = "Backstab Key", Flag = "BackstabKey", Items = {"X", "Z", "C", "V", "MB1", "MB2", "MB3"}, Default = "X", Callback = function(v) Backstab.Key = v end})
 
