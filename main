@@ -28,6 +28,7 @@ local flickSection = legitPage:Section({Name = "Flick Trigger", Side = 1})
 local magnetSection = blatantPage:Section({Name = "Magnet Aim", Side = 1})
 local rageSection = blatantPage:Section({Name = "Rage Bot", Side = 2})
 local backstabSection = blatantPage:Section({Name = "Backstab", Side = 1})
+local hitboxSection = blatantPage:Section({Name = "Hitbox Expander", Side = 2})
 
 local worldSection = worldPage:Section({Name = "World Settings", Side = 1})
 
@@ -67,6 +68,35 @@ local FlickTrigger = {
     FOVCircleColor = Color3.fromRGB(255, 0, 0)
 }
 
+-- ========== BACKSTAB ==========
+local Backstab = {
+    Enabled = false,
+    Key = "X",
+    Mode = "hold",
+    Holding = false,
+    ToggleState = false,
+    Distance = 3,
+    HeightOffset = 0,
+    TeleportDelay = 0,
+    AutoRotate = true,
+    FOV = 200,
+    ShowFOVCircle = false,
+    FOVCircle = nil,
+    FOVCircleColor = Color3.fromRGB(255, 0, 0)
+}
+
+-- ========== HITBOX EXPANDER ==========
+local HitboxExpander = {
+    Enabled = false,
+    TargetPart = "Head",
+    Size = 5,
+    Transparency = 0.5,
+    OriginalSizes = {},
+    OriginalTransparencies = {},
+    ExpandedParts = {}
+}
+
+-- ========== FLICK TRIGGER FUNCTIONS ==========
 local function GetClosestTargetToCenter()
     local closest = nil
     local closestDistance = FlickTrigger.FOV
@@ -85,42 +115,33 @@ local function GetClosestTargetToCenter()
             end
         end
     end
-    
     return closest
 end
 
 local function FlickTriggerShoot()
     if not FlickTrigger.Enabled then return end
-    
     local target = GetClosestTargetToCenter()
     if not target then return end
     
     local oldCF = Camera.CFrame
     local oldType = Camera.CameraType
-    
     local predicted = target.Position + (target.AssemblyLinearVelocity * FlickTrigger.Prediction)
     
     Camera.CameraType = Enum.CameraType.Scriptable
     RunService.RenderStepped:Wait()
-    
     Camera.CFrame = CFrame.lookAt(oldCF.Position, predicted + Vector3.new(0, 0.06, 0))
     
-    -- Atira
-    mouse1press()
+    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
     RunService.RenderStepped:Wait()
-    mouse1release()
+    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
     
     task.wait(FlickTrigger.ReturnDelay)
-    
     Camera.CFrame = oldCF
     Camera.CameraType = oldType
 end
 
 local function CreateFlickFOVCircle()
-    if FlickTrigger.FOVCircle then
-        FlickTrigger.FOVCircle:Remove()
-    end
-    
+    if FlickTrigger.FOVCircle then FlickTrigger.FOVCircle:Remove() end
     FlickTrigger.FOVCircle = Drawing.new("Circle")
     FlickTrigger.FOVCircle.Radius = FlickTrigger.FOV
     FlickTrigger.FOVCircle.Thickness = 2
@@ -129,23 +150,7 @@ local function CreateFlickFOVCircle()
     FlickTrigger.FOVCircle.Visible = FlickTrigger.ShowFOVCircle and FlickTrigger.Enabled
 end
 
--- ========== BACKSTAB ==========
-local Backstab = {
-    Enabled = false,
-    Key = "X",
-    Mode = "hold",
-    Holding = false,
-    ToggleState = false,
-    Distance = 3,
-    HeightOffset = 0,
-    TeleportDelay = 0,
-    AutoRotate = true,
-    FOV = 200,
-    ShowFOVCircle = false,
-    FOVCircle = nil,
-    FOVCircleColor = Color3.fromRGB(255, 0, 0)
-}
-
+-- ========== BACKSTAB FUNCTIONS ==========
 local function GetClosestPlayerForBackstab()
     local closest = nil
     local closestDistance = Backstab.FOV
@@ -155,7 +160,6 @@ local function GetClosestPlayerForBackstab()
         if plr ~= player and plr.Character then
             local humanoid = plr.Character:FindFirstChildOfClass("Humanoid")
             if humanoid and humanoid.Health <= 0 then continue end
-            
             local targetPart = plr.Character:FindFirstChild("HumanoidRootPart") or plr.Character:FindFirstChild("Head")
             if targetPart then
                 local pos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
@@ -169,75 +173,43 @@ local function GetClosestPlayerForBackstab()
             end
         end
     end
-    
     return closest
 end
 
 local function GetBackPosition(targetCharacter)
     if not targetCharacter then return nil end
-    
     local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
     if not targetRoot then return nil end
-    
-    local targetCFrame = targetRoot.CFrame
-    local backDirection = targetCFrame.LookVector * -1
-    local backPosition = targetRoot.Position + (backDirection * Backstab.Distance)
-    backPosition = backPosition + Vector3.new(0, Backstab.HeightOffset, 0)
-    
+    local backDirection = targetRoot.CFrame.LookVector * -1
+    local backPosition = targetRoot.Position + (backDirection * Backstab.Distance) + Vector3.new(0, Backstab.HeightOffset, 0)
     return backPosition, backDirection
 end
 
 local function ExecuteBackstab(targetPlayer)
-    if not targetPlayer or not targetPlayer.Character then
-        return false
-    end
-    
-    local localChar = player.Character
-    if not localChar then
-        return false
-    end
-    
+    if not targetPlayer or not targetPlayer.Character then return false end
+    local localChar = player.Character if not localChar then return false end
     local targetChar = targetPlayer.Character
     local humanoid = targetChar:FindFirstChildOfClass("Humanoid")
-    
-    if humanoid and humanoid.Health <= 0 then
-        return false
-    end
-    
-    local backPos, backDir = GetBackPosition(targetChar)
-    if not backPos then
-        return false
-    end
-    
+    if humanoid and humanoid.Health <= 0 then return false end
+    local backPos = GetBackPosition(targetChar)
+    if not backPos then return false end
     local rootPart = localChar:FindFirstChild("HumanoidRootPart")
-    if not rootPart then
-        return false
+    if not rootPart then return false end
+    if Backstab.TeleportDelay and Backstab.TeleportDelay > 0 then
+        task.wait(Backstab.TeleportDelay / 1000)
     end
-    
     rootPart.CFrame = CFrame.new(backPos)
-    
     if Backstab.AutoRotate then
         local directionToTarget = (targetChar.HumanoidRootPart.Position - backPos).Unit
         local targetAngle = math.atan2(directionToTarget.X, directionToTarget.Z)
         rootPart.CFrame = CFrame.new(backPos) * CFrame.Angles(0, targetAngle, 0)
     end
-    
     Library:Notification("Backstabbed " .. targetPlayer.Name, 1, Color3.fromRGB(255, 0, 0))
     return true
 end
 
-local function BackstabWithDelay(targetPlayer)
-    if Backstab.TeleportDelay > 0 then
-        task.wait(Backstab.TeleportDelay / 1000)
-    end
-    ExecuteBackstab(targetPlayer)
-end
-
 local function CreateBackstabFOVCircle()
-    if Backstab.FOVCircle then
-        Backstab.FOVCircle:Remove()
-    end
-    
+    if Backstab.FOVCircle then Backstab.FOVCircle:Remove() end
     Backstab.FOVCircle = Drawing.new("Circle")
     Backstab.FOVCircle.Radius = Backstab.FOV
     Backstab.FOVCircle.Thickness = 2
@@ -246,7 +218,83 @@ local function CreateBackstabFOVCircle()
     Backstab.FOVCircle.Visible = Backstab.ShowFOVCircle and Backstab.Enabled
 end
 
--- ========== MATERIAIS DISPONÍVEIS ==========
+-- ========== HITBOX EXPANDER FUNCTIONS ==========
+local function GetPartToExpand(character, partName)
+    if not character then return nil end
+    if partName == "Head" then return character:FindFirstChild("Head")
+    elseif partName == "UpperTorso" then
+        local part = character:FindFirstChild("UpperTorso")
+        if not part then part = character:FindFirstChild("Torso") end
+        return part
+    elseif partName == "HumanoidRootPart" then return character:FindFirstChild("HumanoidRootPart")
+    elseif partName == "All" then return character:GetChildren()
+    end
+    return nil
+end
+
+local function ExpandHitbox(character)
+    if not character or not HitboxExpander.Enabled then return end
+    local dono = Players:GetPlayerFromCharacter(character)
+    if not dono or dono == player then return end
+    if not HitboxExpander.ExpandedParts[character] then
+        HitboxExpander.ExpandedParts[character] = {}
+        HitboxExpander.OriginalSizes[character] = {}
+        HitboxExpander.OriginalTransparencies[character] = {}
+    end
+    
+    if HitboxExpander.TargetPart == "All" then
+        local partsToExpand = {"Head", "UpperTorso", "LowerTorso", "Torso", "HumanoidRootPart", 
+                               "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm",
+                               "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg"}
+        for _, partName in ipairs(partsToExpand) do
+            local part = character:FindFirstChild(partName)
+            if part and part:IsA("BasePart") and not HitboxExpander.ExpandedParts[character][part] then
+                HitboxExpander.OriginalSizes[character][part] = part.Size
+                HitboxExpander.OriginalTransparencies[character][part] = part.Transparency
+                part.Size = part.Size * HitboxExpander.Size
+                part.Transparency = HitboxExpander.Transparency
+                HitboxExpander.ExpandedParts[character][part] = true
+            end
+        end
+    else
+        local part = GetPartToExpand(character, HitboxExpander.TargetPart)
+        if part and part:IsA("BasePart") and not HitboxExpander.ExpandedParts[character][part] then
+            HitboxExpander.OriginalSizes[character][part] = part.Size
+            HitboxExpander.OriginalTransparencies[character][part] = part.Transparency
+            part.Size = part.Size * HitboxExpander.Size
+            part.Transparency = HitboxExpander.Transparency
+            HitboxExpander.ExpandedParts[character][part] = true
+        end
+    end
+end
+
+local function RemoveHitboxExpansion(character)
+    if HitboxExpander.ExpandedParts[character] then
+        for part, _ in pairs(HitboxExpander.ExpandedParts[character]) do
+            if part and part.Parent then
+                if HitboxExpander.OriginalSizes[character] and HitboxExpander.OriginalSizes[character][part] then
+                    part.Size = HitboxExpander.OriginalSizes[character][part]
+                end
+                if HitboxExpander.OriginalTransparencies[character] and HitboxExpander.OriginalTransparencies[character][part] then
+                    part.Transparency = HitboxExpander.OriginalTransparencies[character][part]
+                end
+            end
+        end
+        HitboxExpander.ExpandedParts[character] = nil
+        HitboxExpander.OriginalSizes[character] = nil
+        HitboxExpander.OriginalTransparencies[character] = nil
+    end
+end
+
+local function UpdateAllHitboxExpansions()
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= player and plr.Character then
+            RemoveHitboxExpansion(plr.Character)
+            if HitboxExpander.Enabled then ExpandHitbox(plr.Character) end
+        end
+    end
+end
+
 local AllMaterials = {
     "Plastic", "Wood", "Slate", "Concrete", "Brick", "Neon", "Glass", 
     "ForceField", "Metal", "SmoothPlastic", "DiamondPlate", "CorrodedMetal", 
@@ -354,15 +402,16 @@ local function UpdateChamsNormalColor()
     end
 end
 
--- ========== CHAMS INTELIGENTE (VERDE/VERMELHO POR VISIBILIDADE) ==========
+-- ========== CHAMS INTELIGENTE (VERDE/VEMELHO POR VISIBILIDADE) ==========
 local ChamsInteligente = {
     Enabled = false,
     Transparency = 0.35,
-    VisibleColor = Color3.fromRGB(0, 200, 100),
-    HiddenColor = Color3.fromRGB(220, 60, 60),
+    VisibleColor = Color3.fromRGB(0, 200, 100),   -- Verde
+    HiddenColor = Color3.fromRGB(220, 60, 60),    -- Vermelho
     ActiveHighlights = {}
 }
 
+-- Cache para raycast
 local raycastParams = RaycastParams.new()
 raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
 raycastParams.IgnoreWater = true
@@ -561,11 +610,13 @@ end
 local function RefreshAllEffects()
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= player and plr.Character then
+            -- Chams Normal
             RemoveChamsNormal(plr.Character)
             if ChamsNormal.Enabled then
                 ApplyChamsNormal(plr.Character)
             end
             
+            -- Chams Inteligente
             removerChamsInteligente(plr.Character)
             if ChamsInteligente.Enabled then
                 aplicarChamsInteligente(plr.Character)
@@ -2450,254 +2501,6 @@ local function RemoveJumpPower()
     end
 end
 
--- ========== FLICK TRIGGER GUI ==========
-flickSection:Toggle({
-    Name = "Enable Flick Trigger",
-    Default = false,
-    Flag = "FlickEnabled",
-    Callback = function(v)
-        FlickTrigger.Enabled = v
-        if FlickTrigger.FOVCircle then
-            FlickTrigger.FOVCircle.Visible = v and FlickTrigger.ShowFOVCircle
-        else
-            CreateFlickFOVCircle()
-        end
-    end
-})
-
-flickSection:Toggle({
-    Name = "Show FOV Circle",
-    Default = false,
-    Flag = "FlickShowFOVCircle",
-    Callback = function(v)
-        FlickTrigger.ShowFOVCircle = v
-        if FlickTrigger.FOVCircle then
-            FlickTrigger.FOVCircle.Visible = v and FlickTrigger.Enabled
-        else
-            CreateFlickFOVCircle()
-        end
-    end
-})
-
-local flickFOVColorLabel = flickSection:Label("FOV Circle Color", "Left")
-flickFOVColorLabel:Colorpicker({
-    Name = "Flick FOV Color",
-    Flag = "FlickFOVColor",
-    Default = FlickTrigger.FOVCircleColor,
-    Callback = function(c, a)
-        FlickTrigger.FOVCircleColor = c
-        if FlickTrigger.FOVCircle then
-            FlickTrigger.FOVCircle.Color = c
-        end
-    end
-})
-
-local flickKeyDD = flickSection:Dropdown({
-    Name = "Flick Key",
-    Flag = "FlickKey",
-    Items = {"E", "Q", "F", "G", "X", "C", "V", "R", "T", "Y", "MB1", "MB2", "MB3"},
-    Default = "E",
-    Callback = function(v)
-        FlickTrigger.Key = v
-    end
-})
-
-local flickPartDD = flickSection:Dropdown({
-    Name = "Target Part",
-    Flag = "FlickPart",
-    Items = {"Head", "UpperTorso", "HumanoidRootPart"},
-    Default = "Head",
-    Callback = function(v)
-        FlickTrigger.TargetPart = v
-    end
-})
-
-flickSection:Slider({
-    Name = "FOV Radius",
-    Flag = "FlickFOV",
-    Min = 50,
-    Max = 500,
-    Default = 150,
-    Callback = function(v)
-        FlickTrigger.FOV = v
-        if FlickTrigger.FOVCircle then
-            FlickTrigger.FOVCircle.Radius = v
-        end
-    end
-})
-
-flickSection:Slider({
-    Name = "Return Delay (s)",
-    Flag = "FlickReturnDelay",
-    Min = 0.01,
-    Max = 0.1,
-    Default = 0.02,
-    Decimals = 3,
-    Callback = function(v)
-        FlickTrigger.ReturnDelay = v
-    end
-})
-
-flickSection:Slider({
-    Name = "Prediction",
-    Flag = "FlickPrediction",
-    Min = 0,
-    Max = 0.1,
-    Default = 0.035,
-    Decimals = 3,
-    Callback = function(v)
-        FlickTrigger.Prediction = v
-    end
-})
-
-flickSection:Button({
-    Name = "Test Flick Now",
-    Callback = function()
-        FlickTriggerShoot()
-    end
-})
-
--- ========== BACKSTAB GUI ==========
-backstabSection:Toggle({
-    Name = "Enable Backstab",
-    Default = false,
-    Flag = "BackstabEnabled",
-    Callback = function(v)
-        Backstab.Enabled = v
-        if Backstab.FOVCircle then
-            Backstab.FOVCircle.Visible = v and Backstab.ShowFOVCircle
-        else
-            CreateBackstabFOVCircle()
-        end
-        if not v then
-            Backstab.ToggleState = false
-            Backstab.Holding = false
-        end
-    end
-})
-
-local backstabModeDD = backstabSection:Dropdown({
-    Name = "Backstab Mode",
-    Flag = "BackstabMode",
-    Items = {"Hold", "Toggle"},
-    Default = "Hold",
-    Callback = function(v)
-        if v == "Hold" then
-            Backstab.Mode = "hold"
-            Backstab.ToggleState = false
-        else
-            Backstab.Mode = "toggle"
-        end
-    end
-})
-
-local backstabKeyDD = backstabSection:Dropdown({
-    Name = "Backstab Key",
-    Flag = "BackstabKey",
-    Items = {"X", "Z", "C", "V", "B", "N", "M", "G", "H", "J", "K", "L", "U", "I", "O", "P", "MB1", "MB2", "MB3"},
-    Default = "X",
-    Callback = function(v)
-        Backstab.Key = v
-    end
-})
-
-backstabSection:Toggle({
-    Name = "Show FOV Circle",
-    Default = false,
-    Flag = "BackstabShowFOVCircle",
-    Callback = function(v)
-        Backstab.ShowFOVCircle = v
-        if Backstab.FOVCircle then
-            Backstab.FOVCircle.Visible = v and Backstab.Enabled
-        else
-            CreateBackstabFOVCircle()
-        end
-    end
-})
-
-local backstabFOVColorLabel = backstabSection:Label("FOV Circle Color", "Left")
-backstabFOVColorLabel:Colorpicker({
-    Name = "Backstab FOV Color",
-    Flag = "BackstabFOVColor",
-    Default = Backstab.FOVCircleColor,
-    Callback = function(c, a)
-        Backstab.FOVCircleColor = c
-        if Backstab.FOVCircle then
-            Backstab.FOVCircle.Color = c
-        end
-    end
-})
-
-backstabSection:Slider({
-    Name = "FOV Radius",
-    Flag = "BackstabFOV",
-    Min = 50,
-    Max = 500,
-    Default = 200,
-    Callback = function(v)
-        Backstab.FOV = v
-        if Backstab.FOVCircle then
-            Backstab.FOVCircle.Radius = v
-        end
-    end
-})
-
-backstabSection:Slider({
-    Name = "Distance Behind",
-    Flag = "BackstabDistance",
-    Min = 1,
-    Max = 10,
-    Default = 3,
-    Decimals = 1,
-    Callback = function(v)
-        Backstab.Distance = v
-    end
-})
-
-backstabSection:Slider({
-    Name = "Height Offset",
-    Flag = "BackstabHeight",
-    Min = -5,
-    Max = 5,
-    Default = 0,
-    Decimals = 1,
-    Callback = function(v)
-        Backstab.HeightOffset = v
-    end
-})
-
-backstabSection:Slider({
-    Name = "Teleport Delay (ms)",
-    Flag = "BackstabDelay",
-    Min = 0,
-    Max = 2000,
-    Default = 0,
-    Callback = function(v)
-        Backstab.TeleportDelay = v
-    end
-})
-
-backstabSection:Toggle({
-    Name = "Auto Rotate to Target",
-    Default = true,
-    Flag = "BackstabAutoRotate",
-    Callback = function(v)
-        Backstab.AutoRotate = v
-    end
-})
-
-backstabSection:Button({
-    Name = "Execute Backstab Now",
-    Callback = function()
-        local target = GetClosestPlayerForBackstab()
-        if target then
-            ExecuteBackstab(target)
-        else
-            Library:Notification("No target in FOV!", 1, Color3.fromRGB(255, 0, 0))
-        end
-    end
-})
-
 -- ========== GUI ==========
 visualFOVSection:Toggle({
     Name = "Enable Visual FOV",
@@ -2920,6 +2723,25 @@ triggerSection:Toggle({
         TriggerBot.AliveCheck = v
     end
 })
+
+flickSection:Toggle({Name = "Enable Flick Trigger", Default = false, Flag = "FlickEnabled", Callback = function(v) FlickTrigger.Enabled = v; if FlickTrigger.FOVCircle then FlickTrigger.FOVCircle.Visible = v and FlickTrigger.ShowFOVCircle else CreateFlickFOVCircle() end end})
+
+flickSection:Toggle({Name = "Show FOV Circle", Default = false, Flag = "FlickShowFOVCircle", Callback = function(v) FlickTrigger.ShowFOVCircle = v; if FlickTrigger.FOVCircle then FlickTrigger.FOVCircle.Visible = v and FlickTrigger.Enabled else CreateFlickFOVCircle() end end})
+
+local flickFOVColorLabel = flickSection:Label("FOV Circle Color", "Left")
+flickFOVColorLabel:Colorpicker({Name = "Flick FOV Color", Flag = "FlickFOVColor", Default = FlickTrigger.FOVCircleColor, Callback = function(c) FlickTrigger.FOVCircleColor = c; if FlickTrigger.FOVCircle then FlickTrigger.FOVCircle.Color = c end end})
+
+flickSection:Dropdown({Name = "Flick Key", Flag = "FlickKey", Items = {"E", "Q", "F", "G", "X", "C", "V", "MB1", "MB2", "MB3"}, Default = "E", Callback = function(v) FlickTrigger.Key = v end})
+
+flickSection:Dropdown({Name = "Target Part", Flag = "FlickPart", Items = {"Head", "UpperTorso", "HumanoidRootPart"}, Default = "Head", Callback = function(v) FlickTrigger.TargetPart = v end})
+
+flickSection:Slider({Name = "FOV Radius", Flag = "FlickFOV", Min = 50, Max = 500, Default = 150, Callback = function(v) FlickTrigger.FOV = v; if FlickTrigger.FOVCircle then FlickTrigger.FOVCircle.Radius = v end end})
+
+flickSection:Slider({Name = "Return Delay (s)", Flag = "FlickReturnDelay", Min = 0.01, Max = 0.1, Default = 0.02, Decimals = 3, Callback = function(v) FlickTrigger.ReturnDelay = v end})
+
+flickSection:Slider({Name = "Prediction", Flag = "FlickPrediction", Min = 0, Max = 0.1, Default = 0.035, Decimals = 3, Callback = function(v) FlickTrigger.Prediction = v end})
+
+flickSection:Button({Name = "Test Flick Now", Callback = function() FlickTriggerShoot() end})
 
 -- ========== MAGNET AIM SECTION ==========
 magnetSection:Toggle({
@@ -3159,6 +2981,37 @@ rageSection:Toggle({
         RageBot.TeamCheck = v
     end
 })
+
+backstabSection:Toggle({Name = "Enable Backstab", Default = false, Flag = "BackstabEnabled", Callback = function(v) Backstab.Enabled = v; if Backstab.FOVCircle then Backstab.FOVCircle.Visible = v and Backstab.ShowFOVCircle else CreateBackstabFOVCircle() end; if not v then Backstab.ToggleState = false; Backstab.Holding = false end end})
+
+backstabSection:Dropdown({Name = "Backstab Mode", Flag = "BackstabMode", Items = {"Hold", "Toggle"}, Default = "Hold", Callback = function(v) Backstab.Mode = v:lower(); Backstab.ToggleState = false end})
+
+backstabSection:Dropdown({Name = "Backstab Key", Flag = "BackstabKey", Items = {"X", "Z", "C", "V", "MB1", "MB2", "MB3"}, Default = "X", Callback = function(v) Backstab.Key = v end})
+
+backstabSection:Toggle({Name = "Show FOV Circle", Default = false, Flag = "BackstabShowFOVCircle", Callback = function(v) Backstab.ShowFOVCircle = v; if Backstab.FOVCircle then Backstab.FOVCircle.Visible = v and Backstab.Enabled else CreateBackstabFOVCircle() end end})
+
+local backstabFOVColorLabel = backstabSection:Label("FOV Circle Color", "Left")
+backstabFOVColorLabel:Colorpicker({Name = "Backstab FOV Color", Flag = "BackstabFOVColor", Default = Backstab.FOVCircleColor, Callback = function(c) Backstab.FOVCircleColor = c; if Backstab.FOVCircle then Backstab.FOVCircle.Color = c end end})
+
+backstabSection:Slider({Name = "FOV Radius", Flag = "BackstabFOV", Min = 50, Max = 500, Default = 200, Callback = function(v) Backstab.FOV = v; if Backstab.FOVCircle then Backstab.FOVCircle.Radius = v end end})
+
+backstabSection:Slider({Name = "Distance Behind", Flag = "BackstabDistance", Min = 1, Max = 10, Default = 3, Decimals = 1, Callback = function(v) Backstab.Distance = v end})
+
+backstabSection:Slider({Name = "Height Offset", Flag = "BackstabHeight", Min = -5, Max = 5, Default = 0, Decimals = 1, Callback = function(v) Backstab.HeightOffset = v end})
+
+backstabSection:Slider({Name = "Teleport Delay (ms)", Flag = "BackstabDelay", Min = 0, Max = 2000, Default = 0, Callback = function(v) Backstab.TeleportDelay = v end})
+
+backstabSection:Toggle({Name = "Auto Rotate to Target", Default = true, Flag = "BackstabAutoRotate", Callback = function(v) Backstab.AutoRotate = v end})
+
+backstabSection:Button({Name = "Execute Backstab Now", Callback = function() local target = GetClosestPlayerForBackstab(); if target then ExecuteBackstab(target) else Library:Notification("No target in FOV!", 1, Color3.fromRGB(255,0,0)) end end})
+
+hitboxSection:Toggle({Name = "Enable Hitbox Expander", Default = false, Flag = "HitboxExpanderEnabled", Callback = function(v) HitboxExpander.Enabled = v; UpdateAllHitboxExpansions() end})
+
+hitboxSection:Dropdown({Name = "Target Part", Flag = "HitboxTargetPart", Items = {"Head", "UpperTorso", "HumanoidRootPart", "All"}, Default = "Head", Callback = function(v) HitboxExpander.TargetPart = v; UpdateAllHitboxExpansions() end})
+
+hitboxSection:Slider({Name = "Size Multiplier", Flag = "HitboxSize", Min = 1, Max = 100, Default = 5, Decimals = 1, Callback = function(v) HitboxExpander.Size = v; UpdateAllHitboxExpansions() end})
+
+hitboxSection:Slider({Name = "Transparency", Flag = "HitboxTransparency", Min = 0, Max = 1, Default = 0.5, Decimals = 2, Callback = function(v) HitboxExpander.Transparency = v; UpdateAllHitboxExpansions() end})
 
 -- ========== WORLD SECTION ==========
 worldSection:Toggle({
@@ -3988,11 +3841,10 @@ do
         if RageBot.FOVCircle then
             RageBot.FOVCircle:Remove()
         end
-        if FlickTrigger.FOVCircle then
-            FlickTrigger.FOVCircle:Remove()
-        end
-        if Backstab.FOVCircle then
-            Backstab.FOVCircle:Remove()
+        if FlickTrigger.FOVCircle then FlickTrigger.FOVCircle:Remove() end
+        if Backstab.FOVCircle then Backstab.FOVCircle:Remove() end
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr.Character then RemoveHitboxExpansion(plr.Character) end
         end
         if fullBrightLoop then
             fullBrightLoop:Disconnect()
@@ -4013,8 +3865,6 @@ end
 
 CreateAimFOVCircle()
 CreateRageFOVCircle()
-CreateFlickFOVCircle()
-CreateBackstabFOVCircle()
 
 -- ========== BINDS ==========
 local function ToggleTrigger()
@@ -4025,63 +3875,6 @@ local function ToggleTrigger()
         end
     end
 end
-
--- Flick Trigger Bind
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if FlickTrigger.Enabled then
-        local isKeyMatch = false
-        if FlickTrigger.Key == "MB1" and input.UserInputType == Enum.UserInputType.MouseButton1 then isKeyMatch = true
-        elseif FlickTrigger.Key == "MB2" and input.UserInputType == Enum.UserInputType.MouseButton2 then isKeyMatch = true
-        elseif FlickTrigger.Key == "MB3" and input.UserInputType == Enum.UserInputType.MouseButton3 then isKeyMatch = true
-        elseif input.KeyCode.Name == FlickTrigger.Key then isKeyMatch = true end
-        
-        if isKeyMatch then
-            FlickTriggerShoot()
-        end
-    end
-end)
-
--- Backstab Bind
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if Backstab.Enabled then
-        local isKeyMatch = false
-        if Backstab.Key == "MB1" and input.UserInputType == Enum.UserInputType.MouseButton1 then isKeyMatch = true
-        elseif Backstab.Key == "MB2" and input.UserInputType == Enum.UserInputType.MouseButton2 then isKeyMatch = true
-        elseif Backstab.Key == "MB3" and input.UserInputType == Enum.UserInputType.MouseButton3 then isKeyMatch = true
-        elseif input.KeyCode.Name == Backstab.Key then isKeyMatch = true end
-        
-        if isKeyMatch then
-            if Backstab.Mode == "hold" then
-                Backstab.Holding = true
-            else
-                if not Backstab.ToggleState then
-                    Backstab.ToggleState = true
-                    Backstab.Holding = true
-                else
-                    Backstab.ToggleState = false
-                    Backstab.Holding = false
-                end
-            end
-        end
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if Backstab.Enabled and Backstab.Mode == "hold" then
-        local isKeyMatch = false
-        if Backstab.Key == "MB1" and input.UserInputType == Enum.UserInputType.MouseButton1 then isKeyMatch = true
-        elseif Backstab.Key == "MB2" and input.UserInputType == Enum.UserInputType.MouseButton2 then isKeyMatch = true
-        elseif Backstab.Key == "MB3" and input.UserInputType == Enum.UserInputType.MouseButton3 then isKeyMatch = true
-        elseif input.KeyCode.Name == Backstab.Key then isKeyMatch = true end
-        
-        if isKeyMatch then
-            Backstab.Holding = false
-        end
-    end
-end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
@@ -4364,6 +4157,27 @@ RunService.RenderStepped:Connect(function()
     elseif RageBot.FOVCircle then
         RageBot.FOVCircle.Visible = false
     end
+
+    if FlickTrigger.FOVCircle and FlickTrigger.ShowFOVCircle and FlickTrigger.Enabled then
+        local center = Camera.ViewportSize / 2
+        FlickTrigger.FOVCircle.Position = center
+        FlickTrigger.FOVCircle.Visible = true
+    elseif FlickTrigger.FOVCircle then
+        FlickTrigger.FOVCircle.Visible = false
+    end
+
+    if Backstab.FOVCircle and Backstab.ShowFOVCircle and Backstab.Enabled then
+        local mousePos = UserInputService:GetMouseLocation()
+        Backstab.FOVCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
+        Backstab.FOVCircle.Visible = true
+    elseif Backstab.FOVCircle then
+        Backstab.FOVCircle.Visible = false
+    end
+
+    if Backstab.Enabled and Backstab.Holding then
+        local target = GetClosestPlayerForBackstab()
+        if target then ExecuteBackstab(target) end
+    end
     
     if MagnetAim.Circle and MagnetAim.CircleVisible and MagnetAim.Enabled then
         local mousePos = UserInputService:GetMouseLocation()
@@ -4372,32 +4186,6 @@ RunService.RenderStepped:Connect(function()
         MagnetAim.Circle.Radius = MagnetAim.Range
     elseif MagnetAim.Circle then
         MagnetAim.Circle.Visible = false
-    end
-    
-    if FlickTrigger.FOVCircle and FlickTrigger.ShowFOVCircle and FlickTrigger.Enabled then
-        local center = Camera.ViewportSize / 2
-        FlickTrigger.FOVCircle.Position = center
-        FlickTrigger.FOVCircle.Radius = FlickTrigger.FOV
-        FlickTrigger.FOVCircle.Visible = true
-    elseif FlickTrigger.FOVCircle then
-        FlickTrigger.FOVCircle.Visible = false
-    end
-    
-    if Backstab.FOVCircle and Backstab.ShowFOVCircle and Backstab.Enabled then
-        local mousePos = UserInputService:GetMouseLocation()
-        Backstab.FOVCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
-        Backstab.FOVCircle.Radius = Backstab.FOV
-        Backstab.FOVCircle.Visible = true
-    elseif Backstab.FOVCircle then
-        Backstab.FOVCircle.Visible = false
-    end
-    
-    -- Backstab Execute
-    if Backstab.Enabled and Backstab.Holding then
-        local target = GetClosestPlayerForBackstab()
-        if target then
-            ExecuteBackstab(target)
-        end
     end
     
     -- Rage Bot
@@ -4432,6 +4220,71 @@ RunService.RenderStepped:Connect(function()
         StartSpinBot()
     end
 end)
+
+-- Flick Trigger Bind
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if FlickTrigger.Enabled then
+        local isKeyMatch = false
+        if FlickTrigger.Key == "MB1" and input.UserInputType == Enum.UserInputType.MouseButton1 then isKeyMatch = true
+        elseif FlickTrigger.Key == "MB2" and input.UserInputType == Enum.UserInputType.MouseButton2 then isKeyMatch = true
+        elseif FlickTrigger.Key == "MB3" and input.UserInputType == Enum.UserInputType.MouseButton3 then isKeyMatch = true
+        elseif input.KeyCode.Name == FlickTrigger.Key then isKeyMatch = true end
+        if isKeyMatch then FlickTriggerShoot() end
+    end
+end)
+
+-- Backstab Bind
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if Backstab.Enabled then
+        local isKeyMatch = false
+        if Backstab.Key == "MB1" and input.UserInputType == Enum.UserInputType.MouseButton1 then isKeyMatch = true
+        elseif Backstab.Key == "MB2" and input.UserInputType == Enum.UserInputType.MouseButton2 then isKeyMatch = true
+        elseif Backstab.Key == "MB3" and input.UserInputType == Enum.UserInputType.MouseButton3 then isKeyMatch = true
+        elseif input.KeyCode.Name == Backstab.Key then isKeyMatch = true end
+        if isKeyMatch then
+            if Backstab.Mode == "hold" then Backstab.Holding = true
+            else
+                if not Backstab.ToggleState then Backstab.ToggleState = true; Backstab.Holding = true
+                else Backstab.ToggleState = false; Backstab.Holding = false end
+            end
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if Backstab.Enabled and Backstab.Mode == "hold" then
+        local isKeyMatch = false
+        if Backstab.Key == "MB1" and input.UserInputType == Enum.UserInputType.MouseButton1 then isKeyMatch = true
+        elseif Backstab.Key == "MB2" and input.UserInputType == Enum.UserInputType.MouseButton2 then isKeyMatch = true
+        elseif Backstab.Key == "MB3" and input.UserInputType == Enum.UserInputType.MouseButton3 then isKeyMatch = true
+        elseif input.KeyCode.Name == Backstab.Key then isKeyMatch = true end
+        if isKeyMatch then Backstab.Holding = false end
+    end
+end)
+
+Players.PlayerAdded:Connect(function(novoJogador)
+    if novoJogador ~= player then
+        novoJogador.CharacterAdded:Connect(function(character)
+            task.wait(0.1)
+            if HitboxExpander.Enabled then ExpandHitbox(character) end
+        end)
+    end
+end)
+
+for _, outroJogador in ipairs(Players:GetPlayers()) do
+    if outroJogador ~= player then
+        outroJogador.CharacterAdded:Connect(function(character)
+            task.wait(0.1)
+            if HitboxExpander.Enabled then ExpandHitbox(character) end
+        end)
+        if outroJogador.Character and HitboxExpander.Enabled then
+            ExpandHitbox(outroJogador.Character)
+        end
+    end
+end
 
 player.CharacterAdded:Connect(function(char)
     task.wait(0.5)
